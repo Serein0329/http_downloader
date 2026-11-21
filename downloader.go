@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,14 +73,14 @@ func (d *Downloader) Download(rawURL, outPath string) error {
 			paint(colorCyan, "Multi_Downloading"), paint(colorGreen, outPath), formatBytes(size), d.threads)
 		return d.downloadMulti(rawURL, outPath, int(size))
 	}
-	fmt.Fprintf(d.out, "%s %s (%d threads)\n",
-		paint(colorCyan, "Single_Downloading"), paint(colorGreen, outPath), d.threads)
+	fmt.Fprintf(d.out, "%s %s\n",
+		paint(colorCyan, "Single_Downloading"), paint(colorGreen, outPath))
 	return d.downloadSingle(rawURL, outPath)
 }
 
 func (d *Downloader) downloadMulti(rawURL, filename string, size int) error {
 	parts := splitRanges(size, d.threads)
-	dir := partDir(filename)
+	dir := partDir(filename, d.threads)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create part dir: %w", err)
 	}
@@ -144,7 +145,7 @@ func (d *Downloader) downloadMulti(rawURL, filename string, size int) error {
 }
 
 func (d *Downloader) downloadPart(ctx context.Context, rawURL, filename string, p part) error {
-	path := partPath(filename, p.index)
+	path := partPath(filename, d.threads, p.index)
 
 	offset := 0
 	if info, err := os.Stat(path); err == nil {
@@ -212,7 +213,7 @@ func (d *Downloader) merge(filename string, parts []part) error {
 	defer dest.Close()
 
 	for _, p := range parts {
-		src, err := os.Open(partPath(filename, p.index))
+		src, err := os.Open(partPath(filename, d.threads, p.index))
 		if err != nil {
 			_ = os.Remove(filename)
 			return fmt.Errorf("open part %d: %w", p.index, err)
@@ -280,10 +281,10 @@ func splitRanges(size, threads int) []part {
 	return parts
 }
 
-func partDir(filename string) string { return filename + partSuffix }
+func partDir(filename string, thread int) string { return filename + partSuffix + strconv.Itoa(thread) }
 
-func partPath(filename string, i int) string {
-	return filepath.Join(partDir(filename), fmt.Sprintf("%s.%d", filename, i))
+func partPath(filename string, thread, i int) string {
+	return filepath.Join(partDir(filename, thread), fmt.Sprintf("%s.%d", filename, i))
 }
 
 func GetFilename(rawURL string, resp http.Header) string {

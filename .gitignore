@@ -4,6 +4,8 @@
 *.exe
 *.exe~
 *.dll
+*.parts
 
 *.test.go
+test
 
